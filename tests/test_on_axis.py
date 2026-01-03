@@ -1,6 +1,9 @@
 """
 Tests for on-axis field values against known analytical formulae.
 
+Copyright (C) 2024 Indrek Mandre <indrek(at)mare.ee>
+Licensed under the MIT License.
+
 On-axis formulae (r=0):
 
 Electric field:

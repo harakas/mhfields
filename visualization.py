@@ -1,6 +1,9 @@
 """
 Visualization tools for electromagnetic field plots.
 
+Copyright (C) 2024 Indrek Mandre <indrek(at)mare.ee>
+Licensed under the MIT License.
+
 This module provides functions for creating 2D visualizations of electromagnetic
 fields, including:
 - Quiver plots (direction arrows)
