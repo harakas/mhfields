@@ -2,6 +2,8 @@
 
 GNU Octave scripts for computing and visualizing electromagnetic fields of rings of charge and current.
 
+Based on the original scripts from https://mare.ee/indrek/octave/
+
 ## Magnetic Field Functions
 
 ### `loop_bfield(radius, current, r, a)`
