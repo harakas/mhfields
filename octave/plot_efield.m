@@ -1,4 +1,5 @@
 ## Copyright (C) 2024 Indrek Mandre <indrek(at)mare.ee>
+## Licensed under the MIT License.
 ##
 ## Visualize the electric field of a ring of charge.
 ## Generates a plot similar to efield_contours.png with:

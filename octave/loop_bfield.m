@@ -1,5 +1,6 @@
 ## Copyright (C) 2008-2024 Indrek Mandre <indrek(at)mare.ee>
 ## For more information please see http://www.mare.ee/indrek/octave/
+## Licensed under the MIT License.
 ##
 ## Compute the magnetic field of a current loop (ring of current).
 ##

@@ -1,4 +1,5 @@
 ## Copyright (C) 2024 Indrek Mandre <indrek(at)mare.ee>
+## Licensed under the MIT License.
 ##
 ## Visualize the magnetic field of a current loop.
 ## Generates a plot similar to bfield_contours.png with:
