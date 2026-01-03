@@ -54,6 +54,28 @@ I = 1.0  # Current (A)
 B_r, B_a = ring_magnetic_field(r, a, R, I)
 ```
 
+### Vectorized usage
+
+The functions accept NumPy arrays for computing fields at multiple points:
+
+```python
+import numpy as np
+from mhfields import ring_electric_field
+
+R = 1.0
+Q = 1e-9
+
+# Create a grid of points
+r = np.linspace(0, 2, 100)
+a = np.linspace(-2, 2, 100)
+r_grid, a_grid = np.meshgrid(r, a)
+
+# Compute field at all points at once
+E_r, E_a = ring_electric_field(r_grid, a_grid, R, Q)
+
+# E_r and E_a are now 100x100 arrays
+```
+
 ### Visualization
 
 ```python
