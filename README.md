@@ -104,6 +104,10 @@ $$B_a = \frac{\mu_0}{4\pi} I \frac{2}{\sqrt{q}} \left[ E(\sqrt{\mu}) \frac{R^2 -
 
 Where $K(\sqrt{\mu})$ and $E(\sqrt{\mu})$ are the complete elliptic integrals of the first and second kind.
 
+## Octave Implementation
+
+An equivalent implementation in GNU Octave is available in the [octave/](octave/) directory, providing magnetic field calculations and visualization.
+
 ## References
 
 - "Off-axis electric field of a ring of charge" by Indrek Mandre, July 2007 ([PDF](docs/efield_ring_of_charge.pdf))
