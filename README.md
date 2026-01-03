@@ -8,17 +8,21 @@ Maxwell-Heaviside Fields - a Python library for calculating the off-axis electri
 
 ## Installation
 
-Install the required dependencies:
+Install directly from GitHub:
 
 ```bash
-pip install -r requirements.txt
+pip install git+https://github.com/harakas/mhfields.git
 ```
 
-Or install them directly:
+Or clone and install in development mode (editable):
 
 ```bash
-pip install numpy scipy matplotlib
+git clone https://github.com/harakas/mhfields.git
+cd mhfields
+pip install -e .
 ```
+
+The editable install allows changes to the source code to take effect immediately.
 
 ## Usage
 
