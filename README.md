@@ -114,4 +114,9 @@ An equivalent implementation in GNU Octave is available in the [octave/](octave/
 
 ## References
 
-- "Off-axis electric field of a ring of charge" by Indrek Mandre, July 2007 ([PDF](docs/efield_ring_of_charge.pdf))
+This project is based on:
+
+- [Off-axis magnetic field of a current loop](https://mare.ee/indrek/octave/) - Original Octave implementation
+- [Off-axis electric field of a ring of charge](https://mare.ee/indrek/ephi/) - Theory and derivation
+
+See also: [docs/efield_ring_of_charge.pdf](docs/efield_ring_of_charge.pdf)
