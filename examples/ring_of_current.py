@@ -20,9 +20,14 @@ R = 1.0   # Ring radius (m)
 I = 1.0   # Current (A)
 
 
+import numpy as np
+
 def field_func(r, a):
-    """Magnetic field function for plotting."""
-    return ring_magnetic_field(r, a, R, I)
+    """Magnetic field function for plotting (handles negative r for XZ cross-section)."""
+    B_r, B_a = ring_magnetic_field(np.abs(r), a, R, I)
+    # Flip radial component for negative r (other side of axis)
+    B_r = np.where(r < 0, -B_r, B_r)
+    return B_r, B_a
 
 
 if __name__ == '__main__':

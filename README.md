@@ -6,6 +6,8 @@ Maxwell-Heaviside Fields - a Python library for calculating the off-axis electri
 
 ![Magnetic field of ring of current](docs/bfield_contours.png)
 
+![Magnetic field of helical coil](docs/helix_zx.png)
+
 ## Installation
 
 Install directly from GitHub:
@@ -92,6 +94,31 @@ plot_field_2d(
     title='Magnetic Field of Ring of Current'
 )
 ```
+
+### Assembly API
+
+Build complex configurations from current loops and segments:
+
+```python
+from mhfields import Assembly, CurrentLoop, CurrentSegment
+
+# Create a Helmholtz coil pair
+R = 0.1  # 10cm radius
+I = 1.0  # 1A current
+d = R    # Helmholtz spacing
+
+asm = Assembly()
+asm.add(CurrentLoop([0, 0, -d/2], [0, 0, 1], R, I))
+asm.add(CurrentLoop([0, 0, +d/2], [0, 0, 1], R, I))
+
+# Compute total field at a point
+B = asm.bfield([0, 0, 0])
+
+# Visualize in XZ plane
+fig, ax = asm.slice_xz(y=0, mode='log_contour_lines_streamlines')
+```
+
+See `examples/solenoid.py` and `examples/helix.py` for more complex configurations.
 
 ## Running Tests
 

@@ -20,9 +20,14 @@ R = 1.0    # Ring radius (m)
 Q = 1e-9   # Total charge (C)
 
 
+import numpy as np
+
 def field_func(r, a):
-    """Electric field function for plotting."""
-    return ring_electric_field(r, a, R, Q)
+    """Electric field function for plotting (handles negative r for XZ cross-section)."""
+    E_r, E_a = ring_electric_field(np.abs(r), a, R, Q)
+    # Flip radial component for negative r (other side of axis)
+    E_r = np.where(r < 0, -E_r, E_r)
+    return E_r, E_a
 
 
 if __name__ == '__main__':

@@ -92,17 +92,8 @@ def plot_field_2d(field_func, r_range, a_range,
     a_coarse = np.linspace(a_min, a_max, n_grid_coarse)
     R_coarse, A_coarse = np.meshgrid(r_coarse, a_coarse)
 
-    # Handle negative r values (mirror for XZ plane visualization)
-    def compute_field_with_mirror(R_grid, A_grid):
-        """Compute field, handling negative r by mirroring."""
-        R_abs = np.abs(R_grid)
-        F_r, F_a = field_func(R_abs, A_grid)
-        # For negative r, radial component flips sign
-        F_r = np.where(R_grid < 0, -F_r, F_r)
-        return F_r, F_a
-
     # Compute fields on fine grid
-    Fr_fine, Fa_fine = compute_field_with_mirror(R_fine, A_fine)
+    Fr_fine, Fa_fine = field_func(R_fine, A_fine)
 
     # Compute magnitude
     magnitude = np.sqrt(Fr_fine**2 + Fa_fine**2)
@@ -125,7 +116,7 @@ def plot_field_2d(field_func, r_range, a_range,
             magnitude = np.where(magnitude > max_val, 0, magnitude)
 
     # Compute fields on coarse grid for arrows
-    Fr_coarse, Fa_coarse = compute_field_with_mirror(R_coarse, A_coarse)
+    Fr_coarse, Fa_coarse = field_func(R_coarse, A_coarse)
 
     # Normalize arrows (unit vectors for direction only)
     mag_coarse = np.sqrt(Fr_coarse**2 + Fa_coarse**2)

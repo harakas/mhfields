@@ -74,6 +74,20 @@ def generate_field_plots(field_func, prefix, title_base, colorbar_label, cap_val
     )
 
 
+def efield_func(r, a):
+    """Electric field with negative r handling for XZ cross-section."""
+    E_r, E_a = ring_electric_field(np.abs(r), a, R, Q)
+    E_r = np.where(r < 0, -E_r, E_r)
+    return E_r, E_a
+
+
+def bfield_func(r, a):
+    """Magnetic field with negative r handling for XZ cross-section."""
+    B_r, B_a = ring_magnetic_field(np.abs(r), a, R, I)
+    B_r = np.where(r < 0, -B_r, B_r)
+    return B_r, B_a
+
+
 if __name__ == '__main__':
     # Cap at field value 5cm from ring (towards origin)
     CAP_DIST = 0.10
@@ -87,7 +101,7 @@ if __name__ == '__main__':
     print(f"E-field cap value: {efield_cap:.6e}")
 
     generate_field_plots(
-        lambda r, a: ring_electric_field(r, a, R, Q),
+        efield_func,
         'efield',
         f'Electric Field of Ring (R={R} m, Q={Q:.0e} C)',
         colorbar_label='|E| (V/m)',
@@ -104,7 +118,7 @@ if __name__ == '__main__':
     print(f"B-field cap value: {bfield_cap:.6e}")
 
     generate_field_plots(
-        lambda r, a: ring_magnetic_field(r, a, R, I),
+        bfield_func,
         'bfield',
         f'Magnetic Field of Ring (R={R} m, I={I} A)',
         colorbar_label='|B| (T)',
