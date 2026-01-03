@@ -25,8 +25,11 @@ MU_0 = 4 * np.pi * 1e-7  # Vacuum permeability (H/m)
 EPSILON_0 = 8.854187817e-12  # Vacuum permittivity (F/m)
 C = 299792458  # Speed of light (m/s)
 
-# Numerical cutoff for singularity handling
+# Numerical cutoff for singularity handling (dimensionless, for mu parameter)
 CUTOFF = 5e-7
+
+# Relative epsilon for avoiding division by zero (scales with R)
+REL_EPS = 1e-14
 
 
 def _compute_elliptic_params(r, a, R):
@@ -94,8 +97,11 @@ def _cutoff_radius(a, R, cutoff=CUTOFF):
     # Use the negative root (smaller r)
     r_c = (-B - np.sqrt(np.maximum(discriminant, 0))) / (2*A)
 
-    return np.maximum(r_c, 1e-32)
+    return np.maximum(r_c, REL_EPS * R)
 
+
+_TIMING_DEBUG = False
+_timing_stats = {}
 
 def ring_magnetic_field(r, a, R, I):
     """
@@ -132,6 +138,12 @@ def ring_magnetic_field(r, a, R, I):
     - On axis (r→0): B_r = 0 by symmetry
     - For small μ: Linear interpolation from cutoff radius
     """
+    import time
+    global _timing_stats
+    if _TIMING_DEBUG:
+        _timing_stats = {}
+        t0 = time.perf_counter()
+
     r = np.asarray(r, dtype=float)
     a = np.asarray(a, dtype=float)
 
@@ -141,45 +153,70 @@ def ring_magnetic_field(r, a, R, I):
     r = r.ravel()
     a = a.ravel()
 
-    # Initialize output
-    B_r = np.zeros_like(r)
-    B_a = np.zeros_like(r)
+    if _TIMING_DEBUG:
+        _timing_stats['1_array_setup'] = time.perf_counter() - t0
+        t1 = time.perf_counter()
 
     # Compute elliptic parameters
     q, mu, sqrt_q = _compute_elliptic_params(r, a, R)
 
+    if _TIMING_DEBUG:
+        _timing_stats['2_elliptic_params'] = time.perf_counter() - t1
+        t1 = time.perf_counter()
+
     # Prefactor: (μ₀/4π) × I × 2 = μ₀I/(2π)
-    # But Octave uses f1 = 2e-7 * I which is μ₀I/(4π) × 2
     prefactor = 2e-7 * I  # = μ₀I/(2π)
 
+    # Common denominator = q - 4rR = (r-R)² + a²
+    # Use q - 4rR form for numerical consistency with original
+    denom = q - 4*r*R
+
+    # Relative thresholds that scale with R
+    r_eps = REL_EPS * R
+    denom_eps = REL_EPS * R**2
+
     # Mask for valid (non-singular) calculations
-    # Exclude points on the ring itself where denom = (r-R)² + a² ≈ 0
-    denom_full = (r - R)**2 + a**2
-    valid = (mu >= CUTOFF) & (r > 1e-32) & (denom_full > 1e-20)
+    valid = (mu >= CUTOFF) & (r > r_eps) & (denom > denom_eps)
 
-    if np.any(valid):
-        mu_v = mu[valid]
-        r_v = r[valid]
-        a_v = a[valid]
-        q_v = q[valid]
-        sqrt_q_v = sqrt_q[valid]
+    if _TIMING_DEBUG:
+        _timing_stats['3_masking'] = time.perf_counter() - t1
+        t1 = time.perf_counter()
 
-        # Elliptic integrals (scipy uses parameter m, not modulus k)
-        # K(k) and E(k) where k = √μ, so we pass m = μ
-        K = ellipk(mu_v)
-        E = ellipe(mu_v)
+    # Compute for ALL points using safe values to avoid division by zero
+    mu_safe = np.clip(mu, 1e-15, 1.0 - 1e-15)
+    r_safe = np.maximum(r, r_eps)
+    denom_safe = np.maximum(denom, denom_eps)
+    sqrt_q_safe = np.maximum(sqrt_q, REL_EPS * R)
 
-        # Common denominator
-        denom = q_v - 4*r_v*R  # = (r-R)² + a²
+    if _TIMING_DEBUG:
+        _timing_stats['4a_safe_values'] = time.perf_counter() - t1
+        t1 = time.perf_counter()
 
-        # Radial component: B_r = prefactor × (a/r) × [E×(q-2rR)/denom - K] / √q
-        B_r[valid] = prefactor * a_v * (E * (q_v - 2*r_v*R) / denom - K) / (sqrt_q_v * r_v)
+    # Elliptic integrals for all points
+    K = ellipk(mu_safe)
+    E = ellipe(mu_safe)
 
-        # Axial component: B_a = prefactor × [E×(R²-r²-a²)/denom + K] / √q
-        B_a[valid] = prefactor * (E * (R**2 - r_v**2 - a_v**2) / denom + K) / sqrt_q_v
+    if _TIMING_DEBUG:
+        _timing_stats['4b_elliptic_integrals'] = time.perf_counter() - t1
+        t1 = time.perf_counter()
+
+    # Compute field for all points
+    # Radial: B_r = prefactor × (a/r) × [E×(q-2rR)/denom - K] / √q
+    B_r = prefactor * a * (E * (q - 2*r*R) / denom_safe - K) / (sqrt_q_safe * r_safe)
+
+    # Axial: B_a = prefactor × [E×(R²-r²-a²)/denom + K] / √q
+    B_a = prefactor * (E * (R**2 - r**2 - a**2) / denom_safe + K) / sqrt_q_safe
+
+    # Zero out invalid points
+    B_r = np.where(valid, B_r, 0.0)
+    B_a = np.where(valid, B_a, 0.0)
+
+    if _TIMING_DEBUG:
+        _timing_stats['4c_field_computation'] = time.perf_counter() - t1
+        t1 = time.perf_counter()
 
     # Handle small μ region (near axis) with cutoff interpolation
-    small_mu = (mu < CUTOFF) & (mu > 0) & (r > 1e-32)
+    small_mu = (mu < CUTOFF) & (mu > 0) & (r > r_eps)
 
     if np.any(small_mu):
         a_sm = a[small_mu]
@@ -211,8 +248,12 @@ def ring_magnetic_field(r, a, R, I):
         denom_sm = q_sm - 4*r_sm*R
         B_a[small_mu] = prefactor * (E_sm * (R**2 - r_sm**2 - a_sm**2) / denom_sm + K_sm) / sqrt_q_sm
 
-    # On-axis (r = 0): Use analytical formula
-    on_axis = r <= 1e-32
+    if _TIMING_DEBUG:
+        _timing_stats['5_small_mu_handling'] = time.perf_counter() - t1
+        t1 = time.perf_counter()
+
+    # On-axis (r ≈ 0): Use analytical formula
+    on_axis = r <= r_eps
 
     if np.any(on_axis):
         a_ax = a[on_axis]
@@ -221,7 +262,15 @@ def ring_magnetic_field(r, a, R, I):
         # B_r = 0 by symmetry
         B_r[on_axis] = 0.0
 
+    if _TIMING_DEBUG:
+        _timing_stats['6_on_axis_handling'] = time.perf_counter() - t1
+        _timing_stats['total'] = time.perf_counter() - t0
+
     return B_r.reshape(original_shape), B_a.reshape(original_shape)
+
+
+# Alias for benchmarking (compare current implementation against itself)
+ring_magnetic_field_original = ring_magnetic_field
 
 
 def ring_electric_field(r, a, R, Q):
@@ -276,10 +325,13 @@ def ring_electric_field(r, a, R, Q):
     k_e = 1 / (4 * np.pi * EPSILON_0)  # Coulomb constant
     prefactor = k_e * Q * 2 / np.pi
 
+    # Relative thresholds that scale with R
+    r_eps = REL_EPS * R
+
     # Mask for valid calculations
     # Exclude points on the ring itself where (1-μ) → 0
     one_minus_mu = 1 - mu
-    valid = (mu >= CUTOFF) & (r > 1e-32) & (one_minus_mu > 1e-10)
+    valid = (mu >= CUTOFF) & (r > r_eps) & (one_minus_mu > 1e-10)
 
     if np.any(valid):
         mu_v = mu[valid]
@@ -306,7 +358,7 @@ def ring_electric_field(r, a, R, Q):
         E_a[valid] = common * a_v * E
 
     # Handle small μ region with cutoff interpolation
-    small_mu = (mu < CUTOFF) & (mu > 0) & (r > 1e-32)
+    small_mu = (mu < CUTOFF) & (mu > 0) & (r > r_eps)
 
     if np.any(small_mu):
         a_sm = a[small_mu]
@@ -342,8 +394,8 @@ def ring_electric_field(r, a, R, Q):
         common_sm = prefactor / (q32_sm * one_minus_mu_sm)
         E_a[small_mu] = common_sm * a_sm * E_sm
 
-    # On-axis (r = 0): Use analytical formula
-    on_axis = r <= 1e-32
+    # On-axis (r ≈ 0): Use analytical formula
+    on_axis = r <= r_eps
 
     if np.any(on_axis):
         a_ax = a[on_axis]
@@ -389,10 +441,11 @@ def ring_magnetic_field_xyz(x, y, z, R, I):
 
     # Convert radial component to Cartesian
     # B_r points radially outward from axis
-    # Handle r = 0 case
+    # Handle r ≈ 0 case
+    r_eps = REL_EPS * R
     with np.errstate(divide='ignore', invalid='ignore'):
-        cos_phi = np.where(r > 1e-32, x / r, 0.0)
-        sin_phi = np.where(r > 1e-32, y / r, 0.0)
+        cos_phi = np.where(r > r_eps, x / r, 0.0)
+        sin_phi = np.where(r > r_eps, y / r, 0.0)
 
     Bx = B_r * cos_phi
     By = B_r * sin_phi
@@ -433,9 +486,11 @@ def ring_electric_field_xyz(x, y, z, R, Q):
     E_r, E_a = ring_electric_field(r, a, R, Q)
 
     # Convert radial component to Cartesian
+    # Handle r ≈ 0 case
+    r_eps = REL_EPS * R
     with np.errstate(divide='ignore', invalid='ignore'):
-        cos_phi = np.where(r > 1e-32, x / r, 0.0)
-        sin_phi = np.where(r > 1e-32, y / r, 0.0)
+        cos_phi = np.where(r > r_eps, x / r, 0.0)
+        sin_phi = np.where(r > r_eps, y / r, 0.0)
 
     Ex = E_r * cos_phi
     Ey = E_r * sin_phi
