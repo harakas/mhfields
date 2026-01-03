@@ -1,7 +1,7 @@
 """
 mhfields - A Python library for calculating electromagnetic fields of rings.
 
-Copyright (C) 2024 Indrek Mandre <indrek(at)mare.ee>
+Copyright (C) 2007-2026 Indrek Mandre <indrek(at)mare.ee>
 Licensed under the MIT License.
 
 This library provides functions for computing the off-axis electric field

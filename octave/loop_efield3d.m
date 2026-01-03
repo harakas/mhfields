@@ -1,4 +1,4 @@
-## Copyright (C) 2008-2024 Indrek Mandre <indrek(at)mare.ee>
+## Copyright (C) 2008-2026 Indrek Mandre <indrek(at)mare.ee>
 ## For more information please see http://www.mare.ee/indrek/octave/
 ## Licensed under the MIT License.
 ##

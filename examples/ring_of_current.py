@@ -2,7 +2,7 @@
 """
 Magnetic field visualization of a ring of current.
 
-Copyright (C) 2024 Indrek Mandre <indrek(at)mare.ee>
+Copyright (C) 2007-2026 Indrek Mandre <indrek(at)mare.ee>
 Licensed under the MIT License.
 
 This script generates various visualizations of the magnetic field

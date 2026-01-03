@@ -2,7 +2,7 @@
 """
 Generate all visualization outputs for the mhfields library.
 
-Copyright (C) 2024 Indrek Mandre <indrek(at)mare.ee>
+Copyright (C) 2007-2026 Indrek Mandre <indrek(at)mare.ee>
 Licensed under the MIT License.
 
 This script generates all PNG variations for both electric and magnetic fields.

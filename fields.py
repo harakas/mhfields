@@ -1,7 +1,7 @@
 """
 Electromagnetic field calculations for rings of charge and current.
 
-Copyright (C) 2024 Indrek Mandre <indrek(at)mare.ee>
+Copyright (C) 2007-2026 Indrek Mandre <indrek(at)mare.ee>
 Licensed under the MIT License.
 
 This module implements the off-axis electric field of a ring of charge
