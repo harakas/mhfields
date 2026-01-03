@@ -127,5 +127,15 @@ if __name__ == '__main__':
 
     print()
     print("=" * 50)
+    print("Generating Assembly Examples")
+    print("=" * 50)
+
+    import subprocess
+    for script in ['solenoid.py', 'helix.py', 'parallel_wires.py']:
+        print(f"\nRunning {script}...")
+        subprocess.run([sys.executable, os.path.join(OUTPUT_DIR, script)], check=True)
+
+    print()
+    print("=" * 50)
     print("All visualizations generated successfully!")
     print("=" * 50)
