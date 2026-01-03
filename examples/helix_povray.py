@@ -1,0 +1,339 @@
+#!/usr/bin/env python3
+"""
+Generate helix field visualization for POV-Ray rendering.
+
+Copyright (C) 2007-2026 Indrek Mandre <indrek(at)mare.ee>
+Licensed under the MIT License.
+
+Creates:
+1. A borderless field image (helix_field.png)
+2. A POV-Ray scene file (helix_scene.pov)
+"""
+
+import sys
+import os
+import shutil
+import subprocess
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
+from mhfields import Assembly, CurrentSegment
+
+
+def create_helix_assembly():
+    """Create the helix assembly and return it with parameters."""
+    R = 1.0
+    I = 1.0
+    pitch = 0.4
+    n_turns = 9
+    segments_per_turn = 32
+    n_segments = n_turns * segments_per_turn
+
+    asm = Assembly()
+    z_start = -n_turns / 2 * pitch
+
+    # Store segment endpoints for POV-Ray
+    points = []
+
+    for i in range(n_segments):
+        theta0 = 2 * np.pi * i / segments_per_turn
+        theta1 = 2 * np.pi * (i + 1) / segments_per_turn
+        z0 = z_start + pitch * i / segments_per_turn
+        z1 = z_start + pitch * (i + 1) / segments_per_turn
+
+        p0 = [R * np.cos(theta0), R * np.sin(theta0), z0]
+        p1 = [R * np.cos(theta1), R * np.sin(theta1), z1]
+
+        asm.add(CurrentSegment(p0, p1, current=I))
+        points.append(p0)
+
+    # Add final point
+    theta_final = 2 * np.pi * n_segments / segments_per_turn
+    z_final = z_start + pitch * n_segments / segments_per_turn
+    points.append([R * np.cos(theta_final), R * np.sin(theta_final), z_final])
+
+    return asm, points, {'R': R, 'pitch': pitch, 'n_turns': n_turns, 'z_start': z_start}
+
+
+def generate_borderless_field_image(asm, params, output_path, resolution=800):
+    """Generate a borderless field image with known spatial extent."""
+    R = params['R']
+    n_turns = params['n_turns']
+    pitch = params['pitch']
+
+    margin = 1.2
+    z_extent = n_turns / 2 * pitch + margin
+    z_range = (-z_extent, z_extent)
+    x_range = (-(R + margin), R + margin)
+
+    # Create grid
+    n_z = resolution
+    n_x = int(resolution * (x_range[1] - x_range[0]) / (z_range[1] - z_range[0]))
+
+    z = np.linspace(z_range[0], z_range[1], n_z)
+    x = np.linspace(x_range[0], x_range[1], n_x)
+    Z, X = np.meshgrid(z, x)
+
+    # Compute field
+    print("Computing field...")
+    pts = np.column_stack([X.ravel(), np.zeros(X.size), Z.ravel()])
+    B = asm.bfield(pts)
+    magnitude = np.sqrt(B[:, 0]**2 + B[:, 1]**2 + B[:, 2]**2).reshape(X.shape)
+
+    # Cap value
+    k_closest = round(-params['z_start'] / pitch)
+    z_wire = params['z_start'] + k_closest * pitch
+    B_cap = asm.bfield([[R - 0.05, 0, z_wire]])
+    cap_value = float(np.linalg.norm(B_cap))
+    magnitude = np.where(magnitude > cap_value, 0, magnitude)
+
+    # Compute field components for streamlines
+    Bz = B[:, 2].reshape(X.shape)
+    Bx = B[:, 0].reshape(X.shape)
+
+    # Create borderless figure
+    print("Generating image...")
+    dpi = 100
+    fig_width = n_z / dpi
+    fig_height = n_x / dpi
+
+    fig = plt.figure(figsize=(fig_width, fig_height), dpi=dpi)
+    ax = fig.add_axes([0, 0, 1, 1])  # Full figure, no margins
+    ax.axis('off')
+
+    # Log-scale colormap
+    mag_pos = np.where(magnitude > 0, magnitude, np.nan)
+    vmin = np.nanpercentile(mag_pos, 5)
+    vmax = np.nanpercentile(mag_pos, 95)
+    if vmin <= 0:
+        vmin = np.nanmin(mag_pos[mag_pos > 0])
+
+    # Colored intensity
+    ax.pcolormesh(z, x, magnitude, cmap='jet', norm=LogNorm(vmin=vmin, vmax=vmax), shading='auto')
+
+    # Black contour lines
+    levels = np.logspace(np.log10(vmin), np.log10(vmax), 15)
+    ax.contour(z, x, magnitude, levels=levels, colors='black', linewidths=0.5)
+
+    # White streamlines
+    ax.streamplot(z, x, Bz, Bx, color='white', linewidth=0.8, density=1.5, arrowsize=0.8)
+
+    ax.set_xlim(z_range)
+    ax.set_ylim(x_range)
+    ax.set_aspect('equal')
+
+    plt.savefig(output_path, dpi=dpi, pad_inches=0, bbox_inches='tight')
+    plt.close()
+
+    print(f"Saved: {output_path}")
+    print(f"  Z range: {z_range}")
+    print(f"  X range: {x_range}")
+
+    return z_range, x_range
+
+
+def generate_povray_scene(helix_points, z_range, x_range, image_path, output_path):
+    """Generate POV-Ray scene file."""
+
+    wire_radius = 0.04  # Visual radius of wire
+
+    z_min, z_max = z_range
+    x_min, x_max = x_range
+
+    # In our field image:
+    #   - horizontal axis = z (helix axis direction)
+    #   - vertical axis = x (radial direction)
+    #   - the plane is y=0
+    #
+    # In POV-Ray we want:
+    #   - quad lying flat (horizontal table) in the y=0 plane
+    #   - helix axis along Z
+    #   - camera above looking down
+    #
+    # POV-Ray coords: x=right, y=up, z=forward
+    # Our helix: axis along z, radius in xy plane
+    # Quad in y=0 plane: corners at (x, 0, z)
+
+    pov_content = f'''// Helix magnetic field visualization
+// Generated by helix_povray.py
+
+#version 3.7;
+
+global_settings {{
+    assumed_gamma 1.0
+    max_trace_level 5
+}}
+
+// Camera - top-down view with slight angle
+// Looking down at the horizontal quad (table view)
+camera {{
+    location <5.46, 7.62, -2.29>
+    look_at <0, 0, 0>
+    angle 60
+    right x * image_width / image_height
+}}
+
+// Lighting from above
+light_source {{
+    <5, 20, -5>
+    color rgb <1, 1, 1>
+}}
+
+light_source {{
+    <-3, 15, 3>
+    color rgb <0.6, 0.6, 0.6>
+}}
+
+// Chrome material for helix
+#declare ChromeMaterial = material {{
+    texture {{
+        pigment {{ color rgb <0.85, 0.85, 0.9> }}
+        finish {{
+            ambient 0.1
+            diffuse 0.3
+            specular 0.9
+            roughness 0.005
+            reflection {{
+                0.6
+                metallic
+            }}
+        }}
+    }}
+}}
+
+// The helix coil - axis along Z, radius in XY plane
+#declare Helix = union {{
+'''
+
+    # Add sphere_sweep for smooth helix
+    pov_content += '    sphere_sweep {\n'
+    pov_content += '        cubic_spline\n'
+    pov_content += f'        {len(helix_points) + 2},\n'
+
+    # Control point at start
+    p0 = helix_points[0]
+    p1 = helix_points[1]
+    ctrl_start = [2*p0[i] - p1[i] for i in range(3)]
+    # Our helix: [x, y, z] maps directly to POV-Ray <x, y, z>
+    pov_content += f'        <{ctrl_start[0]:.6f}, {ctrl_start[1]:.6f}, {ctrl_start[2]:.6f}>, {wire_radius}\n'
+
+    for p in helix_points:
+        pov_content += f'        <{p[0]:.6f}, {p[1]:.6f}, {p[2]:.6f}>, {wire_radius}\n'
+
+    # Control point at end
+    pn = helix_points[-1]
+    pn1 = helix_points[-2]
+    ctrl_end = [2*pn[i] - pn1[i] for i in range(3)]
+    pov_content += f'        <{ctrl_end[0]:.6f}, {ctrl_end[1]:.6f}, {ctrl_end[2]:.6f}>, {wire_radius}\n'
+
+    pov_content += '        tolerance 0.001\n'
+    pov_content += '    }\n'
+    pov_content += '    material { ChromeMaterial }\n'
+    pov_content += '}\n\n'
+
+    # Field visualization quad - horizontal in y=0 plane
+    # Image: horizontal=z, vertical=x
+    # Quad corners: we need (x, 0, z) positions
+    # Image u (0-1) maps to z_min..z_max
+    # Image v (0-1) maps to x_min..x_max
+    y_pos = -0.01
+
+    pov_content += f'''// Field visualization quad - horizontal (table) at y={y_pos}
+// Image horizontal axis (u) = z direction
+// Image vertical axis (v) = x direction
+box {{
+    <{x_min:.4f}, {y_pos - 0.001:.4f}, {z_min:.4f}>,
+    <{x_max:.4f}, {y_pos:.4f}, {z_max:.4f}>
+
+    texture {{
+        pigment {{
+            image_map {{
+                png "{os.path.basename(image_path)}"
+                interpolate 2
+                map_type 0
+            }}
+            // Map image onto XZ plane
+            // Image: horizontal=z (helix axis), vertical=x (radial)
+            // POV-Ray box top face: x and z directions
+            // rotate <0,0,-90> swaps image u/v to align correctly
+            rotate <0, 0, -90>
+            rotate <90, 0, 0>
+            scale <{x_max - x_min:.4f}, 1, {z_max - z_min:.4f}>
+            translate <{x_min:.4f}, 0, {z_min:.4f}>
+        }}
+        finish {{
+            ambient 1.0
+            diffuse 0.0
+            specular 0
+            reflection 0
+        }}
+    }}
+}}
+
+object {{ Helix }}
+'''
+
+    with open(output_path, 'w') as f:
+        f.write(pov_content)
+
+    print(f"Saved: {output_path}")
+
+
+if __name__ == '__main__':
+    output_dir = os.path.dirname(os.path.abspath(__file__))
+
+    print("Creating helix assembly...")
+    asm, helix_points, params = create_helix_assembly()
+    print(f"  {len(helix_points)} points")
+
+    image_path = os.path.join(output_dir, 'helix_field.png')
+    if os.path.exists(image_path):
+        print(f"Using existing: {image_path}")
+        # Recompute ranges from params
+        R = params['R']
+        n_turns = params['n_turns']
+        pitch = params['pitch']
+        margin = 1.2
+        z_extent = n_turns / 2 * pitch + margin
+        z_range = (-z_extent, z_extent)
+        x_range = (-(R + margin), R + margin)
+    else:
+        z_range, x_range = generate_borderless_field_image(asm, params, image_path)
+
+    pov_path = os.path.join(output_dir, 'helix_scene.pov')
+    generate_povray_scene(helix_points, z_range, x_range, image_path, pov_path)
+
+    # Render with POV-Ray
+    if shutil.which('povray') is None:
+        print("\nError: POV-Ray is not installed.")
+        print("Install with: sudo apt-get install povray")
+        sys.exit(1)
+
+    render_path = os.path.join(output_dir, 'helix_render.png')
+    print("\nRendering with POV-Ray (2880x1620)...")
+    result = subprocess.run(
+        ['povray', '+W2880', '+H1620', '+A', '-D', f'+O{render_path}', pov_path],
+        capture_output=True
+    )
+    if result.returncode != 0 or not os.path.exists(render_path):
+        print("POV-Ray rendering failed")
+        sys.exit(1)
+
+    print(f"Saved: {render_path}")
+
+    # Post-process with ImageMagick: make black transparent and trim
+    if shutil.which('convert') is not None:
+        print("Processing with ImageMagick (transparency + trim)...")
+        result = subprocess.run(
+            ['convert', render_path, '-fuzz', '5%', '-transparent', 'black', '-trim', '+repage', render_path],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0:
+            print(f"Processed: {render_path}")
+        else:
+            print("ImageMagick processing failed:", result.stderr)
+    else:
+        print("Note: Install ImageMagick for post-processing (sudo apt-get install imagemagick)")

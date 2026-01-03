@@ -4,8 +4,6 @@ Maxwell-Heaviside Fields - a Python library for calculating the off-axis electri
 
 ![Electric field of ring of charge](docs/efield_contours.png)
 
-![Magnetic field of ring of current](docs/bfield_contours.png)
-
 ![Magnetic field of helical coil](docs/helix_zx.png)
 
 ## Installation
@@ -169,3 +167,5 @@ This project is based on:
 - [Off-axis electric field of a ring of charge](https://mare.ee/indrek/ephi/) - Theory and derivation
 
 See also: [docs/efield_ring_of_charge.pdf](docs/efield_ring_of_charge.pdf)
+
+![3D render of helical coil with magnetic field](docs/helix_render.webp)
