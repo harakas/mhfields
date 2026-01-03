@@ -21,7 +21,7 @@ try:
 except ImportError:
     HAS_PYTEST = False
 
-from mhfields.fields import ring_electric_field, EPSILON_0
+from mhfields.fields import ring_electric_field, ring_magnetic_field, EPSILON_0, MU_0
 
 
 # Physical constants
@@ -30,6 +30,7 @@ K_E = 1 / (4 * np.pi * EPSILON_0)  # Coulomb constant
 # Test parameters
 R = 1.0  # Ring radius (m)
 Q = 1e-9  # Total charge (C)
+I = 1.0  # Current (A)
 
 
 def numerical_efield_ring(r, a, R, Q, N=1000):
@@ -106,6 +107,97 @@ def numerical_efield_ring(r, a, R, Q, N=1000):
         f"Ey should be zero by symmetry, got {Ey}"
 
     return E_r, E_a
+
+
+def numerical_bfield_ring(r, a, R, I, N=1000):
+    """
+    Compute magnetic field numerically using Biot-Savart law with N current elements.
+
+    Uses extended precision (float128/longdouble) for summation to reduce
+    numerical errors.
+
+    The Biot-Savart law:
+        dB = (μ₀/4π) * I * (dl × r̂) / r²
+           = (μ₀/4π) * I * (dl × (r - r')) / |r - r'|³
+
+    Parameters
+    ----------
+    r : float
+        Radial distance from axis
+    a : float
+        Axial distance from ring plane
+    R : float
+        Ring radius
+    I : float
+        Current in the ring
+    N : int
+        Number of current elements to use
+
+    Returns
+    -------
+    B_r, B_a : float
+        Radial and axial components of magnetic field
+    """
+    # Use extended precision for accumulation
+    dtype = np.longdouble
+
+    # Prefactor: μ₀/(4π)
+    prefactor = MU_0 / (4 * np.pi)
+
+    # Angles for current elements (uniformly distributed)
+    angles = np.linspace(0, 2*np.pi, N, endpoint=False, dtype=dtype)
+    dtheta = dtype(2 * np.pi / N)
+
+    # Positions of current elements on ring (in XY plane)
+    # Ring centered at origin, lying in z=0 plane
+    x_ring = R * np.cos(angles)
+    y_ring = R * np.sin(angles)
+    z_ring = np.zeros(N, dtype=dtype)
+
+    # Current element direction (tangent to ring, counterclockwise when viewed from +z)
+    # For counterclockwise current: dl = R*dθ * (-sin θ, cos θ, 0)
+    dl_x = -R * dtheta * np.sin(angles)
+    dl_y = R * dtheta * np.cos(angles)
+    dl_z = np.zeros(N, dtype=dtype)
+
+    # Field point position (in XZ plane due to symmetry, y=0)
+    x_field = dtype(r)
+    y_field = dtype(0.0)
+    z_field = dtype(a)
+
+    # Displacement vectors from each current element to field point
+    dx = x_field - x_ring
+    dy = y_field - y_ring
+    dz = z_field - z_ring
+
+    # Distance cubed
+    dist_sq = dx**2 + dy**2 + dz**2
+    dist_cubed = dist_sq * np.sqrt(dist_sq)
+
+    # Avoid division by zero
+    dist_cubed = np.maximum(dist_cubed, 1e-100)
+
+    # Biot-Savart: dB = (μ₀/4π) * I * (dl × displacement) / |displacement|³
+    # Cross product: dl × d = (dl_y*dz - dl_z*dy, dl_z*dx - dl_x*dz, dl_x*dy - dl_y*dx)
+    cross_x = dl_y * dz - dl_z * dy
+    cross_y = dl_z * dx - dl_x * dz
+    cross_z = dl_x * dy - dl_y * dx
+
+    # Sum contributions
+    Bx = np.sum(prefactor * I * cross_x / dist_cubed, dtype=dtype)
+    By = np.sum(prefactor * I * cross_y / dist_cubed, dtype=dtype)
+    Bz = np.sum(prefactor * I * cross_z / dist_cubed, dtype=dtype)
+
+    # Convert to cylindrical coordinates
+    # At field point (r, 0, a), the radial direction is +x
+    B_r = float(Bx)
+    B_a = float(Bz)
+
+    # By should be zero by symmetry
+    assert abs(float(By)) < 1e-10 * (abs(B_r) + abs(B_a) + 1e-20), \
+        f"By should be zero by symmetry, got {By}"
+
+    return B_r, B_a
 
 
 class TestNumericalComparison:
@@ -254,6 +346,145 @@ class TestNumericalEdgeCases:
         np.testing.assert_allclose(E_r_pos, E_r_neg, rtol=1e-6)
 
 
+class TestBiotSavartComparison:
+    """Compare analytical B-field with numerical Biot-Savart integration."""
+
+    # Test points: (r, a, description)
+    TEST_POINTS = [
+        # On axis
+        (0.0, 0.0, "origin"),
+        (0.0, 0.5, "on_axis_near"),
+        (0.0, 1.0, "on_axis_at_R"),
+        (0.0, 2.0, "on_axis_2R"),
+        (0.0, 5.0, "on_axis_far"),
+        (0.0, -1.0, "on_axis_negative"),
+
+        # In ring plane
+        (0.5, 0.0, "ring_plane_inside"),
+        (2.0, 0.0, "ring_plane_outside"),
+
+        # General off-axis points
+        (0.3, 0.7, "off_axis_1"),
+        (0.8, 0.4, "off_axis_2"),
+        (1.5, 1.2, "off_axis_3"),
+        (0.5, 0.5, "off_axis_4"),
+        (0.2, 1.5, "off_axis_5"),
+
+        # Far field
+        (5.0, 5.0, "far_field_1"),
+        (0.0, 10.0, "far_field_axis"),
+        (10.0, 0.0, "far_field_radial"),
+    ]
+
+    def test_biot_savart_vs_analytical_N1000(self):
+        """Compare with N=1000 current elements."""
+        N = 1000
+        max_rel_error = 0.0
+
+        for r, a, name in self.TEST_POINTS:
+            B_r_analytical, B_a_analytical = ring_magnetic_field(r, a, R, I)
+            B_r_numerical, B_a_numerical = numerical_bfield_ring(r, a, R, I, N=N)
+
+            # Compute relative errors (use magnitude for reference)
+            B_mag_analytical = np.sqrt(B_r_analytical**2 + B_a_analytical**2)
+
+            if B_mag_analytical > 1e-30:
+                rel_err_r = abs(B_r_numerical - B_r_analytical) / (B_mag_analytical + 1e-40)
+                rel_err_a = abs(B_a_numerical - B_a_analytical) / (B_mag_analytical + 1e-40)
+                rel_err = max(rel_err_r, rel_err_a)
+                max_rel_error = max(max_rel_error, rel_err)
+
+                # With N=1000, error should be < 1% for most points
+                assert rel_err < 0.01, \
+                    f"Large error at {name}: analytical=({B_r_analytical}, {B_a_analytical}), " \
+                    f"numerical=({B_r_numerical}, {B_a_numerical}), rel_err={rel_err:.2e}"
+
+    def test_biot_savart_vs_analytical_N10000(self):
+        """Compare with N=10000 current elements for higher accuracy."""
+        N = 10000
+
+        for r, a, name in self.TEST_POINTS:
+            B_r_analytical, B_a_analytical = ring_magnetic_field(r, a, R, I)
+            B_r_numerical, B_a_numerical = numerical_bfield_ring(r, a, R, I, N=N)
+
+            B_mag_analytical = np.sqrt(B_r_analytical**2 + B_a_analytical**2)
+
+            if B_mag_analytical > 1e-30:
+                rel_err_r = abs(B_r_numerical - B_r_analytical) / (B_mag_analytical + 1e-40)
+                rel_err_a = abs(B_a_numerical - B_a_analytical) / (B_mag_analytical + 1e-40)
+                rel_err = max(rel_err_r, rel_err_a)
+
+                # With N=10000, error should be < 0.1%
+                assert rel_err < 0.001, \
+                    f"Large error at {name}: analytical=({B_r_analytical}, {B_a_analytical}), " \
+                    f"numerical=({B_r_numerical}, {B_a_numerical}), rel_err={rel_err:.2e}"
+
+    def test_biot_savart_convergence(self):
+        """Test that error decreases as N increases (convergence)."""
+        # Use a point close to the ring where discretization error is significant
+        test_point = (0.95, 0.05)  # Close to ring
+        r, a = test_point
+
+        B_r_analytical, B_a_analytical = ring_magnetic_field(r, a, R, I)
+        B_mag = np.sqrt(B_r_analytical**2 + B_a_analytical**2)
+
+        N_values = [100, 500, 1000, 5000, 10000]
+        errors = []
+
+        for N in N_values:
+            B_r_num, B_a_num = numerical_bfield_ring(r, a, R, I, N=N)
+            err_r = abs(B_r_num - B_r_analytical) / B_mag
+            err_a = abs(B_a_num - B_a_analytical) / B_mag
+            errors.append(max(err_r, err_a))
+
+        # Error should generally decrease with N
+        assert errors[-1] < errors[0] / 2, \
+            f"Convergence not observed: errors = {errors}"
+
+
+class TestBiotSavartEdgeCases:
+    """Test Biot-Savart numerical comparison at edge cases."""
+
+    def test_on_axis_radial_zero(self):
+        """On axis, B_r should be zero for both analytical and numerical."""
+        a_values = [0.0, 0.5, 1.0, 2.0]
+        N = 5000
+
+        for a in a_values:
+            B_r_analytical, B_a_analytical = ring_magnetic_field(0.0, a, R, I)
+            B_r_numerical, B_a_numerical = numerical_bfield_ring(0.0, a, R, I, N=N)
+
+            # Both should be essentially zero
+            assert abs(B_r_analytical) < 1e-20, f"Analytical B_r not zero on axis"
+            assert abs(B_r_numerical) < 1e-15, f"Numerical B_r not zero on axis: {B_r_numerical}"
+
+    def test_ring_plane_radial_zero(self):
+        """In ring plane, B_r should be zero for both analytical and numerical."""
+        r_values = [0.5, 1.5, 2.0]
+        N = 5000
+
+        for r in r_values:
+            B_r_analytical, B_a_analytical = ring_magnetic_field(r, 0.0, R, I)
+            B_r_numerical, B_a_numerical = numerical_bfield_ring(r, 0.0, R, I, N=N)
+
+            # Both should be essentially zero
+            assert abs(B_r_analytical) < 1e-15, f"Analytical B_r not zero in ring plane"
+            assert abs(B_r_numerical) < 1e-10, f"Numerical B_r not zero in ring plane: {B_r_numerical}"
+
+    def test_symmetry_above_below(self):
+        """B_a should be symmetric in a, B_r should be antisymmetric."""
+        r, a = 0.5, 0.7
+        N = 5000
+
+        B_r_pos, B_a_pos = numerical_bfield_ring(r, a, R, I, N=N)
+        B_r_neg, B_a_neg = numerical_bfield_ring(r, -a, R, I, N=N)
+
+        # B_a should be the same (symmetric)
+        np.testing.assert_allclose(B_a_pos, B_a_neg, rtol=1e-6)
+        # B_r should flip sign (antisymmetric)
+        np.testing.assert_allclose(B_r_pos, -B_r_neg, rtol=1e-6)
+
+
 class TestNumericalReport:
     """Generate a report of numerical vs analytical comparison."""
 
@@ -298,6 +529,48 @@ class TestNumericalReport:
         # This is also a test - max error should be small
         assert max_err < 0.001, f"Maximum error too large: {max_err}"
 
+    def test_bfield_detailed_comparison_report(self):
+        """Print detailed B-field comparison (for debugging/verification)."""
+        N = 10000
+
+        test_points = [
+            (0.0, 0.0, "origin"),
+            (0.0, 1.0, "on_axis"),
+            (0.5, 0.0, "in_plane"),
+            (0.5, 0.5, "off_axis"),
+            (0.9, 0.1, "near_ring"),
+            (5.0, 5.0, "far_field"),
+        ]
+
+        print("\n" + "="*90)
+        print(f"Biot-Savart vs Analytical B-field Comparison (N={N} current elements)")
+        print("="*90)
+        print(f"{'Point':<12} {'r':>6} {'a':>6} | {'B_r anal':>12} {'B_r num':>12} {'err':>10} | {'B_a anal':>12} {'B_a num':>12} {'err':>10}")
+        print("-"*90)
+
+        max_err = 0.0
+        for r, a, name in test_points:
+            B_r_a, B_a_a = ring_magnetic_field(r, a, R, I)
+            B_r_n, B_a_n = numerical_bfield_ring(r, a, R, I, N=N)
+
+            B_mag = np.sqrt(B_r_a**2 + B_a_a**2)
+            if B_mag > 1e-30:
+                err_r = abs(B_r_n - B_r_a) / B_mag
+                err_a = abs(B_a_n - B_a_a) / B_mag
+            else:
+                err_r = err_a = 0.0
+
+            max_err = max(max_err, err_r, err_a)
+
+            print(f"{name:<12} {r:>6.2f} {a:>6.2f} | {B_r_a:>12.4e} {B_r_n:>12.4e} {err_r:>10.2e} | {B_a_a:>12.4e} {B_a_n:>12.4e} {err_a:>10.2e}")
+
+        print("-"*90)
+        print(f"Maximum relative error: {max_err:.2e}")
+        print("="*90 + "\n")
+
+        # This is also a test - max error should be small
+        assert max_err < 0.001, f"Maximum error too large: {max_err}"
+
 
 def run_tests_without_pytest():
     """Run tests without pytest."""
@@ -307,6 +580,8 @@ def run_tests_without_pytest():
     test_classes = [
         TestNumericalComparison,
         TestNumericalEdgeCases,
+        TestBiotSavartComparison,
+        TestBiotSavartEdgeCases,
         TestNumericalReport,
     ]
 
