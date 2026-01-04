@@ -24,6 +24,12 @@ pip install -e .
 
 The editable install allows changes to the source code to take effect immediately.
 
+For 3D rendering (optional):
+
+```bash
+sudo apt-get install povray imagemagick
+```
+
 ## Usage
 
 ### Electric field of a ring of charge
