@@ -169,3 +169,5 @@ This project is based on:
 See also: [docs/efield_ring_of_charge.pdf](docs/efield_ring_of_charge.pdf)
 
 ![3D render of helical coil with magnetic field](docs/helix_render.webp)
+
+![3D render of ring of charge with electric field](docs/ring_render.webp)

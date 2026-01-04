@@ -137,5 +137,14 @@ if __name__ == '__main__':
 
     print()
     print("=" * 50)
+    print("Generating POV-Ray Renders")
+    print("=" * 50)
+
+    for script in ['helix_povray.py', 'ring_povray.py']:
+        print(f"\nRunning {script}...")
+        subprocess.run([sys.executable, os.path.join(OUTPUT_DIR, script)], check=True)
+
+    print()
+    print("=" * 50)
     print("All visualizations generated successfully!")
     print("=" * 50)
