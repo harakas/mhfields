@@ -35,6 +35,5 @@ dependencies = [
 Homepage = "https://github.com/harakas/mhfields"
 Repository = "https://github.com/harakas/mhfields"
 
-[tool.setuptools]
-packages = ["mhfields"]
-package-dir = {"mhfields" = "."}
+[tool.setuptools.packages.find]
+include = ["mhfields"]

@@ -10,7 +10,7 @@ This script generates all PNG variations for both electric and magnetic fields.
 
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 from mhfields import ring_electric_field, ring_magnetic_field, plot_field_2d

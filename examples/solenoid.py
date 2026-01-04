@@ -11,7 +11,7 @@ configuration of 9 current loops and visualizing the magnetic field.
 
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 from mhfields import Assembly, CurrentLoop, plot_field_2d
