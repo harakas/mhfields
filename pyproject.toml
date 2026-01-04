@@ -36,8 +36,5 @@ Homepage = "https://github.com/harakas/mhfields"
 Repository = "https://github.com/harakas/mhfields"
 
 [tool.setuptools]
-py-modules = ["fields", "visualization"]
 packages = ["mhfields"]
-
-[tool.setuptools.package-dir]
-mhfields = "."
+package-dir = {"mhfields" = "."}
