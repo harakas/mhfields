@@ -169,7 +169,7 @@ global_settings {{
 // Camera - top-down view with slight angle
 // Looking down at the horizontal quad (table view)
 camera {{
-    location <5.46, 7.62, -2.29>
+    location <7.28, 6.77, -3.05>
     look_at <0, 0, 0>
     angle 60
     right x * image_width / image_height
